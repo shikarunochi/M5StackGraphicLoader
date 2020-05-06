@@ -77,7 +77,8 @@ void
 error( char *s)
 {
   Serial.println(s);
-  exit(1);
+  M5.Lcd.setCursor(0, 220);
+  M5.Lcd.print(s);
 }
 
 
@@ -349,9 +350,9 @@ header_read( void)
 {
   int c;
 
-  if ( bit_load( 8) != 'P' ) error("picではありませんよ");
-  if ( bit_load( 8) != 'I' ) error("picではありませんよ");
-  if ( bit_load( 8) != 'C' ) error("picではありませんよ");
+  if ( bit_load( 8) != 'P' ) error("File is not PIC");
+  if ( bit_load( 8) != 'I' ) error("File is not PIC");
+  if ( bit_load( 8) != 'C' ) error("File is not PIC");
   while ( (c = bit_load( 8)) != 26 ) {
     //putchar(c); /*　コメントの表示 */
   }
@@ -359,14 +360,14 @@ header_read( void)
     ; /* null loop */
 
   /* ここは 0 のはず */
-  if ( bit_load( 8) != 0) error("picではありませんよ");
+  if ( bit_load( 8) != 0) error("File is not PIC");
 
   /* タイプ/モードともに 0しか対応していない */
-  if ( bit_load( 8) != 0 ) error("ごめんね対応していないの");
+  if ( bit_load( 8) != 0 ) error("Not supported format");
 
   /* 15bit色しか対応していない */
   if ( bit_load( 16) != 15 ) error("ごめんね対応していないの");
-  if (( x_wid = bit_load( 16)) > SIZE_OF_X ) error("大きくて読めないよ");
+  if (( x_wid = bit_load( 16)) > SIZE_OF_X ) error("File is too Big");
   if (( y_wid = bit_load( 16)) > SIZE_OF_Y ) {
     y_wid = SIZE_OF_Y;  /* Yが多い分には、画面分迄は読める */
   }
@@ -419,17 +420,18 @@ void drawPixelBrend(int x1, int x2, int y, int m5x, int m5y) {
     y1 = y - 1;
     y2 = y;
   }
-  uint16_t c =
-    rgb565(
-      (((float)(getR(point[x1 + y1 * SIZE_OF_X]))) + (float)(getR(point[x1 + y2 * SIZE_OF_X])) +
-       ((float)(getR(point[x2 + y1 * SIZE_OF_X])) + (float)(getR(point[x2 + y2 * SIZE_OF_X]))) * 0.5f ) / 1.5f / 2
-      ,
-      (((float)(getG(point[x1 + y1 * SIZE_OF_X]))) + (float)(getG(point[x1 + y2 * SIZE_OF_X])) +
-       ((float)(getG(point[x2 + y1 * SIZE_OF_X])) + (float)(getG(point[x2 + y2 * SIZE_OF_X]))) * 0.5f ) / 1.5f / 2
-      ,
-      (((float)(getB(point[x1 + y1 * SIZE_OF_X]))) + (float)(getB(point[x1 + y2 * SIZE_OF_X])) +
-       ((float)(getB(point[x2 + y1 * SIZE_OF_X])) + (float)(getB(point[x2 + y2 * SIZE_OF_X]))) * 0.5f ) / 1.5f / 2
-    );
+
+  //GGGGGRRRRRBBBBBI から RGB565作成
+  uint16_t c = makeRGB565(
+     (((float)(getR(point[x1 + y1 * SIZE_OF_X])) + (float)(getR(point[x1 + y2 * SIZE_OF_X])) +
+       ((float)(getR(point[x2 + y1 * SIZE_OF_X])) + (float)(getR(point[x2 + y2 * SIZE_OF_X]))) * 0.5f ) / 1.5f / 2 ) 
+    ,
+     (((float)(getG(point[x1 + y1 * SIZE_OF_X])) + (float)(getG(point[x1 + y2 * SIZE_OF_X])) +
+       ((float)(getG(point[x2 + y1 * SIZE_OF_X])) + (float)(getG(point[x2 + y2 * SIZE_OF_X]))) * 0.5f ) / 1.5f / 2 )
+    ,
+     (((float)(getB(point[x1 + y1 * SIZE_OF_X])) + (float)(getB(point[x1 + y2 * SIZE_OF_X])) +
+      ((float)(getB(point[x2 + y1 * SIZE_OF_X])) + (float)(getB(point[x2 + y2 * SIZE_OF_X]))) * 0.5f ) / 1.5f / 2 ) );
+       
   M5.Lcd.drawPixel(m5x + m5offsetX, m5y + m5offsetY, c);
 }
 
@@ -447,7 +449,7 @@ uint16_t getB( uint16_t grbi) {
   return (grbi >> 1) & 0b11111;
 }
 
-uint16_t rgb565(uint16_t R, uint16_t G, uint16_t B)
+uint16_t makeRGB565(uint16_t R, uint16_t G, uint16_t B)
 {
   uint16_t ret  = (R) << 11;  // 5 bits
   ret |= (G) << 6;  // 6 bits
