@@ -61,6 +61,8 @@ int buff_len;   /* ファイルバッファの残りデータ数  */
 char  buff[SIZE_OF_BUFF]; /* ファイルバッファ     */
 int x_wid, y_wid;   /* ＰＩＣデータの画像サイズ   */
 
+int squareMode; /*正方形モードだと1*/
+
 struct  {     /* 色キャッシュよう */
   int color;
   int next;
@@ -117,6 +119,7 @@ ginit( void)
   //C_WIDTH(5); /* x68k 512x512 65536 */
   point = (int*)ps_malloc(SIZE_OF_X * SIZE_OF_Y * sizeof(int));
   memset(point, 0, SIZE_OF_X * SIZE_OF_Y * sizeof(int));
+  squareMode = 0;
 }
 
 
@@ -349,12 +352,19 @@ void
 header_read( void)
 {
   int c;
-
+  String comment = "";
   if ( bit_load( 8) != 'P' ) error("File is not PIC");
   if ( bit_load( 8) != 'I' ) error("File is not PIC");
   if ( bit_load( 8) != 'C' ) error("File is not PIC");
   while ( (c = bit_load( 8)) != 26 ) {
     //putchar(c); /*　コメントの表示 */
+    comment = comment + (char)c;
+  }
+  
+  if(comment.indexOf("/XSS/") > 0){
+    squareMode = 1;
+  }else{
+    squareMode = 0;
   }
   while ( bit_load( 8) != 0 ) /* ここは読み飛ばす */
     ; /* null loop */
@@ -366,7 +376,7 @@ header_read( void)
   if ( bit_load( 8) != 0 ) error("Not supported format");
 
   /* 15bit色しか対応していない */
-  if ( bit_load( 16) != 15 ) error("ごめんね対応していないの");
+  if ( bit_load( 16) != 15 ) error("Not supported format(16bit)");
   if (( x_wid = bit_load( 16)) > SIZE_OF_X ) error("File is too Big");
   if (( y_wid = bit_load( 16)) > SIZE_OF_Y ) {
     y_wid = SIZE_OF_Y;  /* Yが多い分には、画面分迄は読める */
@@ -378,24 +388,30 @@ header_read( void)
 //縦方向は 512 / 2 = 256、上下8ドット描画無しで240
 
 void drawM5StackPixel(int x, int y) {
-  //横方向は、x1(M5Stackの1ドットに多く含む方):x2(M5Stackの1ドットに少なく含む方) = 1:0.5 で色計算
-  //X680003個に対し、M5Stack1個
-  //X68000 ●●●|●●●|
-  //M5Stack ●● |●●|
-  //X68000側で中心のドットを描画した場合、M5Stackでは関連する2つのドットを描画する必要があります。
 
-  switch (x % 3) {
-    case 0://x:(x+1)=1:0.5で x / 1.5の位置を描画
-      drawPixelBrend(x, x + 1, y, x / 1.5, y / 2);
-      break;
-    case 1://(x-1):x=1:0.5で x / 1.5の位置を描画
-      //x:(x+1)=0.5:1で x / 1.5 + 1 の位置を描画
-      drawPixelBrend(x - 1, x, y, x / 1.5, y / 2);
-      drawPixelBrend(x + 1, x, y, x / 1.5 + 1, y / 2);
-      break;
-    case 2://(x-1):x=0.5:1で x / 1.5の位置を描画
-      drawPixelBrend(x, x - 1 , y, x / 1.5, y / 2);
-      break;
+  if(squareMode == 0){
+    //横方向は、x1(M5Stackの1ドットに多く含む方):x2(M5Stackの1ドットに少なく含む方) = 1:0.5 で色計算
+    //X680003個に対し、M5Stack1個
+    //X68000 ●●●|●●●|
+    //M5Stack ●● |●●|
+    //X68000側で中心のドットを描画した場合、M5Stackでは関連する2つのドットを描画する必要があります。
+  
+    switch (x % 3) {
+      case 0://x:(x+1)=1:0.5で x / 1.5の位置を描画
+        drawPixelBrend(x, x + 1, y, x / 1.5, y / 2);
+        break;
+      case 1://(x-1):x=1:0.5で x / 1.5の位置を描画
+        //x:(x+1)=0.5:1で x / 1.5 + 1 の位置を描画
+        drawPixelBrend(x - 1, x, y, x / 1.5, y / 2);
+        drawPixelBrend(x + 1, x, y, x / 1.5 + 1, y / 2);
+        break;
+      case 2://(x-1):x=0.5:1で x / 1.5の位置を描画
+        drawPixelBrend(x, x - 1 , y, x / 1.5, y / 2);
+        break;
+    }
+  }
+  else{ //正方形モード
+    drawPixelSquare(x, y);
   }
 }
 
@@ -434,6 +450,43 @@ void drawPixelBrend(int x1, int x2, int y, int m5x, int m5y) {
        
   M5.Lcd.drawPixel(m5x + m5offsetX, m5y + m5offsetY, c);
 }
+
+//X68000横2ドットをM5Stack1ドットとして、256 x 256 で正方形モードでの描画。512 / 2 = 256 なので、横32ドットずらして、画面真ん中に正方形で描く
+void drawPixelSquare(int x, int y) {
+  int m5offsetX = 32;
+  int m5offsetY = -8;
+
+  int m5x = x / 2;
+  int m5y = y / 2;
+
+  if (m5x + m5offsetX < 0 || m5x + m5offsetX >= 320 ||
+      m5y + m5offsetY < 0 || m5y + m5offsetY >= 240 )
+  {
+    return;
+  }
+
+  int y1 = 0;
+  int y2 = 0;
+
+  if ( y % 2 == 0) {
+    y1 = y;
+    y2 = y + 1;
+  } else {
+    y1 = y - 1;
+    y2 = y;
+  }
+
+  //GGGGGRRRRRBBBBBI から RGB565作成
+  uint16_t c = makeRGB565(
+     ((float)(getR(point[x + y1 * SIZE_OF_X])) + (float)(getR(point[x + y2 * SIZE_OF_X]))) / 2 
+    ,
+     ((float)(getG(point[x + y1 * SIZE_OF_X])) + (float)(getG(point[x + y2 * SIZE_OF_X]))) / 2 
+    ,
+    ((float)(getB(point[x + y1 * SIZE_OF_X])) + (float)(getB(point[x + y2 * SIZE_OF_X]))) / 2 );
+       
+  M5.Lcd.drawPixel(m5x + m5offsetX, m5y + m5offsetY, c);
+}
+
 
 
 //X68000 GRBI = GGGGGRRRRRBBBBBI(16bit)
