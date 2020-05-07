@@ -1,17 +1,23 @@
 // MAG表示ロジックは、https://emk.name/2015/03/magjs.html で公開されているロジックを移植したものです。
 
+#ifndef GRAPHIC_LOADER_MAIN
+
 #include <M5Stack.h>
 #include "SD.h"
 #include <M5StackUpdater.h>  // https://github.com/tobozo/M5Stack-SD-Updater/
 
+#endif
+
 #include <esp_heap_caps.h>
 
-#define MAG_DIRECTORY "/mag"
+#ifndef GRAPHIC_LOADER_MAIN
 
 __attribute__ ((always_inline)) inline static 
 uint16_t swap565( uint8_t r, uint8_t g, uint8_t b) {
   return ((b >> 3) << 8) | ((g >> 2) << 13) | ((g >> 5) | ((r>>3)<<3));
 }
+
+#define MAG_DIRECTORY "/mag"
 
 void setup(void) {
   M5.begin(); 
@@ -43,6 +49,11 @@ void randomDraw() {
       String fileName = entry.name();
       fileName.toUpperCase();
       if (fileName.endsWith("MAG") == true) {
+	  	M5.Lcd.fillScreen(TFT_BLACK);
+  		M5.Lcd.setCursor(0, 220);
+  		M5.Lcd.setTextSize(1);
+	
+  		M5.Lcd.print(dataFile.name());
         magLoad(entry);
         delay(1000);
       }
@@ -52,13 +63,9 @@ void randomDraw() {
   magRoot.close();
 }
 
+#endif
+
 void magLoad(File dataFile) {
-  M5.Lcd.fillScreen(TFT_BLACK);
-  M5.Lcd.setCursor(0, 220);
-  M5.Lcd.setTextSize(1);
-
-  M5.Lcd.print(dataFile.name());
-
   uint8_t maki02[8];
   dataFile.read(maki02, 8);
   if (0 != memcmp (maki02, "MAKI02  ", 8)) {
@@ -68,7 +75,7 @@ void magLoad(File dataFile) {
   }
 
   //ヘッダ先頭まで読み捨て
-  int headerOffset = 30;
+  int headerOffset = 8;
   dataFile.seek(headerOffset, SeekSet);
   while (dataFile.available() && 0 != dataFile.read()) ++headerOffset;
 

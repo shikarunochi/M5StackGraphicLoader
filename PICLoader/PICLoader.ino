@@ -1,5 +1,6 @@
 //PICフォーマット書庫に含まれる picl.c をベースにしています。
 //https://www.vector.co.jp/soft/dl/data/art/se003198.html
+#ifndef GRAPHIC_LOADER_MAIN
 
 #include <M5Stack.h>
 #include "SD.h"
@@ -37,6 +38,11 @@ void randomDraw() {
       String fileName = entry.name();
       fileName.toUpperCase();
       if (fileName.endsWith("PIC") == true) {
+        M5.Lcd.fillScreen(BLACK);
+        M5.Lcd.setTextSize(1);
+        M5.Lcd.setCursor(0, 220);
+        M5.Lcd.print(fileName);
+
         picLoad(entry);
         delay(1000);
       }
@@ -45,6 +51,8 @@ void randomDraw() {
   }
   picRoot.close();
 }
+
+#endif
 
 File curDataFile;
 
@@ -360,10 +368,10 @@ header_read( void)
     //putchar(c); /*　コメントの表示 */
     comment = comment + (char)c;
   }
-  
-  if(comment.indexOf("/XSS/") > 0){
+
+  if (comment.indexOf("/XSS/") > 0) {
     squareMode = 1;
-  }else{
+  } else {
     squareMode = 0;
   }
   while ( bit_load( 8) != 0 ) /* ここは読み飛ばす */
@@ -389,13 +397,13 @@ header_read( void)
 
 void drawM5StackPixel(int x, int y) {
 
-  if(squareMode == 0){
+  if (squareMode == 0) {
     //横方向は、x1(M5Stackの1ドットに多く含む方):x2(M5Stackの1ドットに少なく含む方) = 1:0.5 で色計算
     //X680003個に対し、M5Stack1個
     //X68000 ●●●|●●●|
     //M5Stack ●● |●●|
     //X68000側で中心のドットを描画した場合、M5Stackでは関連する2つのドットを描画する必要があります。
-  
+
     switch (x % 3) {
       case 0://x:(x+1)=1:0.5で x / 1.5の位置を描画
         drawPixelBrend(x, x + 1, y, x / 1.5, y / 2);
@@ -410,7 +418,7 @@ void drawM5StackPixel(int x, int y) {
         break;
     }
   }
-  else{ //正方形モード
+  else { //正方形モード
     drawPixelSquare(x, y);
   }
 }
@@ -439,15 +447,15 @@ void drawPixelBrend(int x1, int x2, int y, int m5x, int m5y) {
 
   //GGGGGRRRRRBBBBBI から RGB565作成
   uint16_t c = makeRGB565(
-     (((float)(getR(point[x1 + y1 * SIZE_OF_X])) + (float)(getR(point[x1 + y2 * SIZE_OF_X])) +
-       ((float)(getR(point[x2 + y1 * SIZE_OF_X])) + (float)(getR(point[x2 + y2 * SIZE_OF_X]))) * 0.5f ) / 1.5f / 2 ) 
-    ,
-     (((float)(getG(point[x1 + y1 * SIZE_OF_X])) + (float)(getG(point[x1 + y2 * SIZE_OF_X])) +
-       ((float)(getG(point[x2 + y1 * SIZE_OF_X])) + (float)(getG(point[x2 + y2 * SIZE_OF_X]))) * 0.5f ) / 1.5f / 2 )
-    ,
-     (((float)(getB(point[x1 + y1 * SIZE_OF_X])) + (float)(getB(point[x1 + y2 * SIZE_OF_X])) +
-      ((float)(getB(point[x2 + y1 * SIZE_OF_X])) + (float)(getB(point[x2 + y2 * SIZE_OF_X]))) * 0.5f ) / 1.5f / 2 ) );
-       
+                 (((float)(getR(point[x1 + y1 * SIZE_OF_X])) + (float)(getR(point[x1 + y2 * SIZE_OF_X])) +
+                   ((float)(getR(point[x2 + y1 * SIZE_OF_X])) + (float)(getR(point[x2 + y2 * SIZE_OF_X]))) * 0.5f ) / 1.5f / 2 )
+                 ,
+                 (((float)(getG(point[x1 + y1 * SIZE_OF_X])) + (float)(getG(point[x1 + y2 * SIZE_OF_X])) +
+                   ((float)(getG(point[x2 + y1 * SIZE_OF_X])) + (float)(getG(point[x2 + y2 * SIZE_OF_X]))) * 0.5f ) / 1.5f / 2 )
+                 ,
+                 (((float)(getB(point[x1 + y1 * SIZE_OF_X])) + (float)(getB(point[x1 + y2 * SIZE_OF_X])) +
+                   ((float)(getB(point[x2 + y1 * SIZE_OF_X])) + (float)(getB(point[x2 + y2 * SIZE_OF_X]))) * 0.5f ) / 1.5f / 2 ) );
+
   M5.Lcd.drawPixel(m5x + m5offsetX, m5y + m5offsetY, c);
 }
 
@@ -478,12 +486,12 @@ void drawPixelSquare(int x, int y) {
 
   //GGGGGRRRRRBBBBBI から RGB565作成
   uint16_t c = makeRGB565(
-     ((float)(getR(point[x + y1 * SIZE_OF_X])) + (float)(getR(point[x + y2 * SIZE_OF_X]))) / 2 
-    ,
-     ((float)(getG(point[x + y1 * SIZE_OF_X])) + (float)(getG(point[x + y2 * SIZE_OF_X]))) / 2 
-    ,
-    ((float)(getB(point[x + y1 * SIZE_OF_X])) + (float)(getB(point[x + y2 * SIZE_OF_X]))) / 2 );
-       
+                 ((float)(getR(point[x + y1 * SIZE_OF_X])) + (float)(getR(point[x + y2 * SIZE_OF_X]))) / 2
+                 ,
+                 ((float)(getG(point[x + y1 * SIZE_OF_X])) + (float)(getG(point[x + y2 * SIZE_OF_X]))) / 2
+                 ,
+                 ((float)(getB(point[x + y1 * SIZE_OF_X])) + (float)(getB(point[x + y2 * SIZE_OF_X]))) / 2 );
+
   M5.Lcd.drawPixel(m5x + m5offsetX, m5y + m5offsetY, c);
 }
 
@@ -511,13 +519,7 @@ uint16_t makeRGB565(uint16_t R, uint16_t G, uint16_t B)
 }
 
 void picLoad(File dataFile) {
-  M5.Lcd.fillScreen(BLACK);
-  M5.Lcd.setCursor(0, 220);
-  M5.Lcd.setTextSize(1);
-  String fileName = dataFile.name();
-  M5.Lcd.setCursor(0, 220);
-  M5.Lcd.print(fileName);
-  
+
   curDataFile = dataFile;
   bit_len = buff_len = 0;   /* ファイルバッファの初期化 */
   ginit();      /* 画面モードの初期化    */
