@@ -77,8 +77,10 @@ void magLoad(File dataFile) {
   //ヘッダ先頭まで読み捨て
   int headerOffset = 8;
   dataFile.seek(headerOffset, SeekSet);
-  while (dataFile.available() && 0 != dataFile.read()) ++headerOffset;
+  while (dataFile.available() && 0x1A != dataFile.read()) ++headerOffset;
 
+  headerOffset++;
+  
   dataFile.seek( headerOffset, SeekSet);
 
   struct mag_info_t {
