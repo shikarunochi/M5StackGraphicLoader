@@ -14,6 +14,10 @@ uint16_t swap565( uint8_t r, uint8_t g, uint8_t b) {
   return ((b >> 3) << 8) | ((g >> 2) << 13) | ((g >> 5) | ((r >> 3) << 3));
 }
 
+namespace PILOADER{
+  void piLoad(File dataFile);
+}
+
 String preSelectDirectory = "";
 
 void setup(void) {
@@ -125,6 +129,8 @@ bool sequencialDraw(String targetDirectory) {
         magLoad(entry);
       } else if (fileName.endsWith("PIC") == true) {
         picLoad(entry);
+      } else if (fileName.endsWith("PI") == true) {
+        PILOADER::piLoad(entry);
       }
       if (countEndFlag == false) {
         int deltaFileCount = countFile(cgRootForCount, 1000);
@@ -177,7 +183,6 @@ int addFileName(File dirEntity, String cgRootDirectory, std::vector<String> *fil
   }
 }
 
-
 bool randomDraw(String targetDirectory) {
   File cgRoot;
   bool endFlag = true;
@@ -221,6 +226,8 @@ bool randomDraw(String targetDirectory) {
       magLoad(entry);
     } else if (fileName.endsWith("PIC") == true) {
       picLoad(entry);
+    } else if (fileName.endsWith("PI") == true) {
+      PILOADER::piLoad(entry);
     }
     if (countEndFlag == false) {
       deltaFileCount = addFileName(cgRoot, cgRootDirectory, &fileNameList, 1000);
@@ -327,8 +334,6 @@ String selectDirectory(String preSelectDirectory) {
     }
   }
 
-
-
   bool needUpdate = true;
   while (1) {
     M5.update();
@@ -369,9 +374,7 @@ String selectDirectory(String preSelectDirectory) {
       if (endIndex > directoryCount - 1) {
         endIndex =  directoryCount - 1;
       }
-      Serial.printf("CursorPos:%d StartIndex:%d EndIndex:%d directoryCount:%d\n", cursorPos, startIndex, endIndex, directoryCount);
 
-      //TODO:startIndexが前と変わらないときは画面クリアしない、とかやってあげるとちらつき抑えられますね。
       for (int index = startIndex; index <= endIndex; index++) {
         if (index == cursorPos) {
           M5.Lcd.setTextColor(TFT_GREEN);
@@ -422,8 +425,6 @@ int selectDrawMode(String targetDirectory) {
     if (!entry) { // no more files
       break;
     }
-    //ディレクトリのみ取得
-
     if (!entry.isDirectory()) {
       String fileName = entry.name();
       fileName = fileName.substring(targetDirectory.length() + 1);//ディレクトリ名は除いて表示
@@ -449,5 +450,6 @@ int selectDrawMode(String targetDirectory) {
     if (M5.BtnC.wasPressed()) {
       return 0;
     }
+    delay(100);
   }
 }
