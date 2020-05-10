@@ -2,10 +2,10 @@
 //https://www.vector.co.jp/soft/dl/data/art/se003198.html
 #ifndef GRAPHIC_LOADER_MAIN
 
+#include <map>
 #include <M5Stack.h>
 #include "SD.h"
 #include <M5StackUpdater.h>  // https://github.com/tobozo/M5Stack-SD-Updater/
-#include <map>
 
 #define PIC_DIRECTORY "/pic"
 
@@ -306,7 +306,7 @@ expand_chain( int x, int y, int c)
 
 int getNextThunderX(int x, int y) {
   uint32_t idx = y<<16|x;
-  while (!thunder.empty() && thunder.begin()->first <= idx) {
+  while (!thunder.empty() && thunder.begin()->first < idx) {
     thunder.erase(thunder.begin());
   }
   if (thunder.empty()) return -1;
@@ -323,7 +323,6 @@ expand( void)
   int y;  /* 展開中の位置 Y */
   int c;  /* 現在の色   */
   long  l;  /* 変化点間の長さ */
-  int a;
   int thunder_x = -1;
   x = -1;
   y = 0;
@@ -342,7 +341,7 @@ expand( void)
       /* 連鎖点上を通過した時は、現在の色を変更 */
       if (thunder_x == x) {
         c = 0xfffe & thunder.begin()->second;
-        thunder_x = getNextThunderX(x, y);
+        thunder_x = getNextThunderX(x+1, y);
       }
       /* 現在の色を書き込む */
       //pset(x, y, c);
@@ -367,7 +366,7 @@ expand( void)
     /* 連鎖ありなら、連鎖の展開 */
     if ( bit_load(1) != 0) {
       expand_chain(x, y, c);
-      thunder_x = getNextThunderX(x, y);
+      thunder_x = getNextThunderX(x+1, y);
     }
   }
 }
