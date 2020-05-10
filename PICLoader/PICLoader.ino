@@ -5,6 +5,7 @@
 #include <M5Stack.h>
 #include "SD.h"
 #include <M5StackUpdater.h>  // https://github.com/tobozo/M5Stack-SD-Updater/
+#include <map>
 
 #define PIC_DIRECTORY "/pic"
 
@@ -16,7 +17,7 @@ void setup(void) {
     ESP.restart();
   }
   M5.Lcd.setBrightness(200);    // BRIGHTNESS = MAX 255
-  M5.Lcd.fillScreen(BLACK);     // CLEAR SCREEN
+  M5.Lcd.fillScreen(TFT_BLACK);     // CLEAR SCREEN
   SD.begin();
 }
 
@@ -38,7 +39,7 @@ void randomDraw() {
       String fileName = entry.name();
       fileName.toUpperCase();
       if (fileName.endsWith("PIC") == true) {
-        M5.Lcd.fillScreen(BLACK);
+        M5.Lcd.fillScreen(TFT_BLACK);
         M5.Lcd.setTextSize(1);
         M5.Lcd.setCursor(0, 220);
         M5.Lcd.print(fileName);
@@ -72,13 +73,14 @@ int x_wid, y_wid;   /* ＰＩＣデータの画像サイズ   */
 int squareMode; /*正方形モードだと1*/
 
 struct  {     /* 色キャッシュよう */
-  int color;
-  int next;
-  int prev;
+  uint16_t color;
+  uint16_t next;
+  uint16_t prev;
 } table[128];
-int color_p;    /* 色キャッシュの最新色を指す    */
+uint16_t color_p;    /* 色キャッシュの最新色を指す    */
 
-int *point; //グラフィック画面
+uint16_t *point; //グラフィック画面
+std::map<uint32_t, uint16_t> thunder;
 
 /*
    エラー脱出
@@ -125,8 +127,8 @@ void
 ginit( void)
 {
   //C_WIDTH(5); /* x68k 512x512 65536 */
-  point = (int*)ps_malloc(SIZE_OF_X * SIZE_OF_Y * sizeof(int));
-  memset(point, 0, SIZE_OF_X * SIZE_OF_Y * sizeof(int));
+  point = (uint16_t*)malloc(SIZE_OF_X * 2 * sizeof(uint16_t));
+  memset(point, 0, SIZE_OF_X * 2 * sizeof(uint16_t));
   squareMode = 0;
 }
 
@@ -272,6 +274,8 @@ read_len( void)
 void
 expand_chain( int x, int y, int c)
 {
+  uint16_t rgb565 = ((c >> 6) & 0x1F) << 11 | ((c >> 11) & 0x1F) << 6 | ((c >> 1) & 0x1F);
+
   int y_over; /* 画像サイズが画面サイズを超えた時のフラグ */
 
   y_over = 0; /* まだ超えていないよ */
@@ -288,17 +292,26 @@ expand_chain( int x, int y, int c)
     }
     if ( ++y >= y_wid ) y_over = 1; /* 画面を超えちゃった */
 
-    /* 画面を超えていないのなら連鎖を書き込む
-       " | 1"するのは c=0 の時にも連鎖だと判るように
-    */
+    /* 画面を超えていないのなら連鎖を書き込む */
     if ( y_over == 0) {
-      //pset(x, y, c | 1);
-      point[x + y * SIZE_OF_X] = c | 1;
-      drawM5StackPixel(x, y);
+      thunder[y<<16|x] = c;
+      if (squareMode) {
+        M5.Lcd.drawPixel((x >> 1) +32, (y >> 1) - 8, rgb565);
+      } else {
+        M5.Lcd.drawPixel((x * 2 / 3) -10, (y >> 1) - 8, rgb565);
+      }
     }
   }
 }
 
+int getNextThunderX(int x, int y) {
+  uint32_t idx = y<<16|x;
+  while (!thunder.empty() && thunder.begin()->first <= idx) {
+    thunder.erase(thunder.begin());
+  }
+  if (thunder.empty()) return -1;
+  return thunder.begin()->first & 0xFFFF;
+}
 
 /*
     展開するぞ
@@ -311,7 +324,7 @@ expand( void)
   int c;  /* 現在の色   */
   long  l;  /* 変化点間の長さ */
   int a;
-
+  int thunder_x = -1;
   x = -1;
   y = 0;
   c = 0;    /* 色の初期値は 0ね */
@@ -324,16 +337,18 @@ expand( void)
       if ( ++x == x_wid ) {
         if ( ++y == y_wid ) return; /* (^_^;) */
         x = 0;
+        thunder_x = getNextThunderX(x, y);
       }
       /* 連鎖点上を通過した時は、現在の色を変更 */
-      //if ( ( a = point(x, y)) != 0 ) {
-      if ( ( a = point[x + y * SIZE_OF_X]) != 0 ) {
-        c = a & 0xfffe;
+      if (thunder_x == x) {
+        c = 0xfffe & thunder.begin()->second;
+        thunder_x = getNextThunderX(x, y);
       }
       /* 現在の色を書き込む */
       //pset(x, y, c);
-      point[x + y * SIZE_OF_X] = c;
-      drawM5StackPixel(x, y);
+      point[x + (y&1) * SIZE_OF_X] = c;
+      if (y&1)
+        drawM5StackPixel(x, y);
     }
     /* 右端の処理 */
     if ( ++x == x_wid ) {
@@ -345,11 +360,15 @@ expand( void)
 
     /* それを書いて */
     //pset(x, y, c);
-    point[x + y * 512] = c;
-    drawM5StackPixel(x, y);
+    point[x + (y&1) * 512] = c;
+    if (y&1)
+      drawM5StackPixel(x, y);
 
     /* 連鎖ありなら、連鎖の展開 */
-    if ( bit_load(1) != 0) expand_chain(x, y, c);
+    if ( bit_load(1) != 0) {
+      expand_chain(x, y, c);
+      thunder_x = getNextThunderX(x, y);
+    }
   }
 }
 
@@ -444,17 +463,21 @@ void drawPixelBrend(int x1, int x2, int y, int m5x, int m5y) {
     y1 = y - 1;
     y2 = y;
   }
+  int p11 = point[x1 + (y1 & 1) * SIZE_OF_X];
+  int p12 = point[x1 + (y2 & 1) * SIZE_OF_X];
+  int p21 = point[x2 + (y1 & 1) * SIZE_OF_X];
+  int p22 = point[x2 + (y2 & 1) * SIZE_OF_X];
 
   //GGGGGRRRRRBBBBBI から RGB565作成
   uint16_t c = makeRGB565(
-                 (((float)(getR(point[x1 + y1 * SIZE_OF_X])) + (float)(getR(point[x1 + y2 * SIZE_OF_X])) +
-                   ((float)(getR(point[x2 + y1 * SIZE_OF_X])) + (float)(getR(point[x2 + y2 * SIZE_OF_X]))) * 0.5f ) / 1.5f / 2 )
+                 (((float)(getR(p11)) + (float)(getR(p12)) +
+                   ((float)(getR(p21)) + (float)(getR(p22))) * 0.5f ) / 1.5f / 2 )
                  ,
-                 (((float)(getG(point[x1 + y1 * SIZE_OF_X])) + (float)(getG(point[x1 + y2 * SIZE_OF_X])) +
-                   ((float)(getG(point[x2 + y1 * SIZE_OF_X])) + (float)(getG(point[x2 + y2 * SIZE_OF_X]))) * 0.5f ) / 1.5f / 2 )
+                 (((float)(getG(p11)) + (float)(getG(p12)) +
+                   ((float)(getG(p21)) + (float)(getG(p22))) * 0.5f ) / 1.5f / 2 )
                  ,
-                 (((float)(getB(point[x1 + y1 * SIZE_OF_X])) + (float)(getB(point[x1 + y2 * SIZE_OF_X])) +
-                   ((float)(getB(point[x2 + y1 * SIZE_OF_X])) + (float)(getB(point[x2 + y2 * SIZE_OF_X]))) * 0.5f ) / 1.5f / 2 ) );
+                 (((float)(getB(p11)) + (float)(getB(p12)) +
+                   ((float)(getB(p21)) + (float)(getB(p22))) * 0.5f ) / 1.5f / 2 ) );
 
   M5.Lcd.drawPixel(m5x + m5offsetX, m5y + m5offsetY, c);
 }
@@ -484,13 +507,14 @@ void drawPixelSquare(int x, int y) {
     y2 = y;
   }
 
+  int p1 = point[x + (y1 & 1) * SIZE_OF_X];
+  int p2 = point[x + (y2 & 1) * SIZE_OF_X];
+
   //GGGGGRRRRRBBBBBI から RGB565作成
   uint16_t c = makeRGB565(
-                 ((float)(getR(point[x + y1 * SIZE_OF_X])) + (float)(getR(point[x + y2 * SIZE_OF_X]))) / 2
-                 ,
-                 ((float)(getG(point[x + y1 * SIZE_OF_X])) + (float)(getG(point[x + y2 * SIZE_OF_X]))) / 2
-                 ,
-                 ((float)(getB(point[x + y1 * SIZE_OF_X])) + (float)(getB(point[x + y2 * SIZE_OF_X]))) / 2 );
+                 ((float)(getR(p1)) + (float)(getR(p2))) / 2 ,
+                 ((float)(getG(p1)) + (float)(getG(p2))) / 2 ,
+                 ((float)(getB(p1)) + (float)(getB(p2))) / 2 );
 
   M5.Lcd.drawPixel(m5x + m5offsetX, m5y + m5offsetY, c);
 }
