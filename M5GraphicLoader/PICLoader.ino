@@ -1,8 +1,8 @@
 //PICフォーマット書庫に含まれる picl.c をベースにしています。
 //https://www.vector.co.jp/soft/dl/data/art/se003198.html
+#include <map>
 #ifndef GRAPHIC_LOADER_MAIN
 
-#include <map>
 #include <M5Stack.h>
 #include "SD.h"
 #include <M5StackUpdater.h>  // https://github.com/tobozo/M5Stack-SD-Updater/
