@@ -53,7 +53,7 @@ void randomDraw() {
   		M5.Lcd.setCursor(0, 220);
   		M5.Lcd.setTextSize(1);
 	
-  		M5.Lcd.print(dataFile.name());
+  		M5.Lcd.print(entry.name());
         magLoad(entry);
         delay(1000);
       }
