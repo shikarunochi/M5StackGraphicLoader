@@ -334,6 +334,7 @@ expand( void)
     while ( --l ) {
       /* 右端の処理 */
       if ( ++x == x_wid ) {
+        if (y&1) drawLineBuffer(y);
         if ( ++y == y_wid ) return; /* (^_^;) */
         x = 0;
         thunder_x = getNextThunderX(x, y);
@@ -346,11 +347,10 @@ expand( void)
       /* 現在の色を書き込む */
       //pset(x, y, c);
       point[x + (y&1) * SIZE_OF_X] = c;
-      if (y&1)
-        drawM5StackPixel(x, y);
     }
     /* 右端の処理 */
     if ( ++x == x_wid ) {
+      if (y&1) drawLineBuffer(y);
       if ( ++y == y_wid ) return; /* (^_^;) */
       x = 0;
     }
@@ -360,8 +360,6 @@ expand( void)
     /* それを書いて */
     //pset(x, y, c);
     point[x + (y&1) * 512] = c;
-    if (y&1)
-      drawM5StackPixel(x, y);
 
     /* 連鎖ありなら、連鎖の展開 */
     if ( bit_load(1) != 0) {
@@ -409,115 +407,73 @@ header_read( void)
   }
 }
 
+uint16_t swap565( uint8_t r, uint8_t g, uint8_t b) {
+  return ((b >> 3) << 8) | ((g >> 2) << 13) | ((g >> 5) | ((r>>3)<<3));
+}
+
 //縦横比を変更して描画する。TODO:まだ、1:1.5描画しか対応していません。
 //横方向は 512/ 1.5 = 341.333、上下10ドット描画無しで320
 //縦方向は 512 / 2 = 256、上下8ドット描画無しで240
 
-void drawM5StackPixel(int x, int y) {
+void drawLineBuffer(int y) {
+  int dst_y = (y >> 1) - 8;
+  if (dst_y < 0 || dst_y >= 240) return;
 
-  if (squareMode == 0) {
+  auto dst_width = M5.Lcd.width();
+  uint16_t linebuf[dst_width];
+
+  if (squareMode) { //正方形モード
+//X68000横2ドットをM5Stack1ドットとして、256 x 256 で正方形モードでの描画。512 / 2 = 256 なので、横32ドットずらして、画面真ん中に正方形で描く
+    for (int dst_x = 0; dst_x < dst_width; ++dst_x) {
+      int src_x = (dst_x - 32) << 1;
+      if (src_x < 0 || src_x >= SIZE_OF_X) linebuf[dst_x] = 0;
+      else {
+        int p11 = point[src_x                ];
+        int p21 = point[src_x + 1            ];
+        int p12 = point[src_x     + SIZE_OF_X];
+        int p22 = point[src_x + 1 + SIZE_OF_X];
+
+  //GGGGGRRRRRBBBBBI から RGB565作成
+        linebuf[dst_x] = swap565(
+         (getR(p11) + getR(p12) + getR(p21) + getR(p22)) << 1,
+         (getG(p11) + getG(p12) + getG(p21) + getG(p22)) << 1,
+         (getB(p11) + getB(p12) + getB(p21) + getB(p22)) << 1);
+      }
+    }
+  } else {
     //横方向は、x1(M5Stackの1ドットに多く含む方):x2(M5Stackの1ドットに少なく含む方) = 1:0.5 で色計算
     //X680003個に対し、M5Stack1個
     //X68000 ●●●|●●●|
     //M5Stack ●● |●●|
     //X68000側で中心のドットを描画した場合、M5Stackでは関連する2つのドットを描画する必要があります。
+    for (int dst_x = 0; dst_x < dst_width; ++dst_x) {
+      int src_x = (dst_x + 10) * 3 >> 1;
+      if (src_x < 0 || src_x >= SIZE_OF_X) linebuf[dst_x] = 0;
+      else {
+        int p11 = point[src_x                ];
+        int p21 = point[src_x + 1            ];
+        int p12 = point[src_x     + SIZE_OF_X];
+        int p22 = point[src_x + 1 + SIZE_OF_X];
 
-    switch (x % 3) {
-      case 0://x:(x+1)=1:0.5で x / 1.5の位置を描画
-        drawPixelBrend(x, x + 1, y, x / 1.5, y / 2);
-        break;
-      case 1://(x-1):x=1:0.5で x / 1.5の位置を描画
-        //x:(x+1)=0.5:1で x / 1.5 + 1 の位置を描画
-        drawPixelBrend(x - 1, x, y, x / 1.5, y / 2);
-        drawPixelBrend(x + 1, x, y, x / 1.5 + 1, y / 2);
-        break;
-      case 2://(x-1):x=0.5:1で x / 1.5の位置を描画
-        drawPixelBrend(x, x - 1 , y, x / 1.5, y / 2);
-        break;
+  //GGGGGRRRRRBBBBBI から RGB565作成
+        if ((dst_x & 1) == 0) {  // 1:0.5で描画
+          linebuf[dst_x] = swap565(
+           (getR(p11) + getR(p12) + (getR(p21) + getR(p22))*0.5f) * 8 / 3,
+           (getG(p11) + getG(p12) + (getG(p21) + getG(p22))*0.5f) * 8 / 3,
+           (getB(p11) + getB(p12) + (getB(p21) + getB(p22))*0.5f) * 8 / 3);
+        } else {                 // 0.5:1で描画
+          linebuf[dst_x] = swap565(
+           ((getR(p11) + getR(p12))*0.5f + getR(p21) + getR(p22)) * 8 / 3,
+           ((getG(p11) + getG(p12))*0.5f + getG(p21) + getG(p22)) * 8 / 3,
+           ((getB(p11) + getB(p12))*0.5f + getB(p21) + getB(p22)) * 8 / 3);
+        }
+      }
     }
   }
-  else { //正方形モード
-    drawPixelSquare(x, y);
-  }
+
+  M5.Lcd.setAddrWindow(0, dst_y, dst_width, 1);
+  M5.Lcd.pushColors(linebuf, dst_width, false);
 }
-
-//x1:x2 = 1:0.5 で、m5x,m5y の位置にドットを描く
-void drawPixelBrend(int x1, int x2, int y, int m5x, int m5y) {
-  int m5offsetX = -10;
-  int m5offsetY = -8;
-
-  if (m5x + m5offsetX < 0 || m5x + m5offsetX >= 320 ||
-      m5y + m5offsetY < 0 || m5y + m5offsetY >= 240 )
-  {
-    return;
-  }
-
-  int y1 = 0;
-  int y2 = 0;
-
-  if ( y % 2 == 0) {
-    y1 = y;
-    y2 = y + 1;
-  } else {
-    y1 = y - 1;
-    y2 = y;
-  }
-  int p11 = point[x1 + (y1 & 1) * SIZE_OF_X];
-  int p12 = point[x1 + (y2 & 1) * SIZE_OF_X];
-  int p21 = point[x2 + (y1 & 1) * SIZE_OF_X];
-  int p22 = point[x2 + (y2 & 1) * SIZE_OF_X];
-
-  //GGGGGRRRRRBBBBBI から RGB565作成
-  uint16_t c = makeRGB565(
-                 (((float)(getR(p11)) + (float)(getR(p12)) +
-                   ((float)(getR(p21)) + (float)(getR(p22))) * 0.5f ) / 1.5f / 2 )
-                 ,
-                 (((float)(getG(p11)) + (float)(getG(p12)) +
-                   ((float)(getG(p21)) + (float)(getG(p22))) * 0.5f ) / 1.5f / 2 )
-                 ,
-                 (((float)(getB(p11)) + (float)(getB(p12)) +
-                   ((float)(getB(p21)) + (float)(getB(p22))) * 0.5f ) / 1.5f / 2 ) );
-
-  M5.Lcd.drawPixel(m5x + m5offsetX, m5y + m5offsetY, c);
-}
-
-//X68000横2ドットをM5Stack1ドットとして、256 x 256 で正方形モードでの描画。512 / 2 = 256 なので、横32ドットずらして、画面真ん中に正方形で描く
-void drawPixelSquare(int x, int y) {
-  int m5offsetX = 32;
-  int m5offsetY = -8;
-
-  int m5x = x / 2;
-  int m5y = y / 2;
-
-  if (m5x + m5offsetX < 0 || m5x + m5offsetX >= 320 ||
-      m5y + m5offsetY < 0 || m5y + m5offsetY >= 240 )
-  {
-    return;
-  }
-
-  int y1 = 0;
-  int y2 = 0;
-
-  if ( y % 2 == 0) {
-    y1 = y;
-    y2 = y + 1;
-  } else {
-    y1 = y - 1;
-    y2 = y;
-  }
-
-  int p1 = point[x + (y1 & 1) * SIZE_OF_X];
-  int p2 = point[x + (y2 & 1) * SIZE_OF_X];
-
-  //GGGGGRRRRRBBBBBI から RGB565作成
-  uint16_t c = makeRGB565(
-                 ((float)(getR(p1)) + (float)(getR(p2))) / 2 ,
-                 ((float)(getG(p1)) + (float)(getG(p2))) / 2 ,
-                 ((float)(getB(p1)) + (float)(getB(p2))) / 2 );
-
-  M5.Lcd.drawPixel(m5x + m5offsetX, m5y + m5offsetY, c);
-}
-
 
 
 //X68000 GRBI = GGGGGRRRRRBBBBBI(16bit)
