@@ -32,7 +32,6 @@ __attribute__ ((always_inline)) inline static
 uint16_t swap565( uint8_t r, uint8_t g, uint8_t b) {
   return ((b >> 3) << 8) | ((g >> 2) << 13) | ((g >> 5) | ((r >> 3) << 3));
 }
-}
 
 #define PI_DIRECTORY "/pi"
 
