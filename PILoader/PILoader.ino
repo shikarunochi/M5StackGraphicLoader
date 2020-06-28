@@ -137,7 +137,7 @@ bool header_read(void)
 
   Serial.printf("\n Pic_size  : %4u x %4u\n", x_wid, y_wid);
 
-  if (( gbuffer = (char*)ps_malloc( x_wid * (y_wid + 2) * sizeof(char))) == NULL ) {
+  if (( gbuffer = (char*)malloc( x_wid * 8 * sizeof(char))) == NULL ) {
     error("Sorry! no enough memory");
     return false;
   }
@@ -147,30 +147,42 @@ bool header_read(void)
     palette[i][1] = bit_load(8);
     palette[i][2] = bit_load(8);
   }
+  return true;
 }
 
 /*-------------------------------------------------------------------------*/
 
 void nmemcpy(char *d, char *s, long l)
 {
-  while ( --l >= 0) {
-    *d++ = *s++;
-    *d++ = *s++;
-  }
+  auto dst = (uint16_t*)d;
+  auto src = (uint16_t*)s;
+  long i = 0;
+  do {
+    dst[i] = src[i];
+  } while ( ++i < l );
 }
 
 void expand()
 {
   long	l;
   int		w, a, b, c, d;
-  char 	*pp, *p;
+  int y = 0;
+  int pp = 0;
+  char 	*p;
+  int offset = x_wid * 2;
+
+  uint16_t linebuf[320];
+  int height = y_wid / 2;
+  if (height > 240) {
+    height = 240;
+  }
+  M5.Lcd.setAddrWindow(0, 0, 320, height);
 
   a = read_color( 0);
   b = read_color( a);
-  pp = gbuffer;
   for ( l = 0; l < x_wid; l++ ) {	/*バッファの頭２ライン分を始めの２ドット*/
-    *pp++ = a;					/*と同じ色で埋めます					*/
-    *pp++ = b;
+    gbuffer[pp++] = a;					/*と同じ色で埋めます					*/
+    gbuffer[pp++] = b;
   }
   w = -1;
   for (;;) {
@@ -180,9 +192,9 @@ void expand()
     if ( w == b ) {
       do {
         w = -1;
-        a = pp[-1];
-        a = *pp++ = read_color( a);
-        *pp++ = read_color( a);
+        a = gbuffer[pp-1];
+        a = gbuffer[pp++] = read_color( a);
+        gbuffer[pp++] = read_color( a);
         /* ０を余分に出しているので終了チェックは無くても大丈夫*/
       } while ( bit_load( 1));
     } else {
@@ -190,45 +202,64 @@ void expand()
       l = read_len();
       switch ( b) {
         case 0:
-          a = pp[-1];
-          b = pp[-2];
+          a = gbuffer[pp-1];
+          b = gbuffer[pp-2];
 
-          if ( pp[-1] == pp[-2]) {
+          if ( gbuffer[pp-1] == gbuffer[pp-2]) {
             while ( --l >= 0) {
-              *pp++ = b;
-              *pp++ = a;
+              gbuffer[pp++] = b;
+              gbuffer[pp++] = a;
             }
           } else {
-            d = pp[-4];
-            c = pp[-3];
+            d = gbuffer[pp-4];
+            c = gbuffer[pp-3];
             while ( --l >= 0) {
-              *pp++ = d;
-              *pp++ = c;
+              gbuffer[pp++] = d;
+              gbuffer[pp++] = c;
               if ( --l < 0 )break;
-              *pp++ = b;
-              *pp++ = a;
+              gbuffer[pp++] = b;
+              gbuffer[pp++] = a;
             }
           }
           break;
         case 1:
-          nmemcpy( pp, pp - x_wid, l);
-          pp += l + l;
+          nmemcpy( &gbuffer[pp], &gbuffer[pp - x_wid], l);
+          pp += l << 1;
           break;
         case 2:
-          nmemcpy( pp, pp - (x_wid * 2), l);
-          pp += l + l;
+          nmemcpy( &gbuffer[pp], &gbuffer[pp - (x_wid * 2)], l);
+          pp += l << 1;
           break;
         case 3:
-          nmemcpy( pp, pp - (x_wid - 1), l);
-          pp += l + l;
+          nmemcpy( &gbuffer[pp], &gbuffer[pp - (x_wid - 1)], l);
+          pp += l << 1;
           break;
         case 4:
-          nmemcpy( pp, pp - (x_wid + 1), l);
-          pp += l + l;
+          nmemcpy( &gbuffer[pp], &gbuffer[pp - (x_wid + 1)], l);
+          pp += l << 1;
           break;
       }
     }
-    if ( pp >= gbuffer + (x_wid * 2) + x_wid * y_wid) return;
+    if (pp >= x_wid * 4)
+    {
+      for (int x = 0; x < 320; x++) {
+        if ((x * 2 + 1) + (y * 2 + 1) * x_wid <= (x_wid * 2) + x_wid * y_wid) {
+          uint8_t c1 = gbuffer[offset +  x * 2      ] ;
+          uint8_t c2 = gbuffer[offset + (x * 2 + 1) ] ;
+          uint8_t c3 = gbuffer[offset +  x * 2 +      x_wid] ;
+          uint8_t c4 = gbuffer[offset + (x * 2 + 1) + x_wid] ;
+          linebuf[x] = swap565(
+                         (palette[c1][0] + palette[c2][0] + palette[c3][0] + palette[c4][0]) >> 2,
+                         (palette[c1][1] + palette[c2][1] + palette[c3][1] + palette[c4][1]) >> 2,
+                         (palette[c1][2] + palette[c2][2] + palette[c3][2] + palette[c4][2]) >> 2
+                       );
+        }
+      }
+      M5.Lcd.pushColors(linebuf, 320, false);
+      if (++y >= height) return;
+      pp -= offset;
+      memmove(gbuffer, &gbuffer[offset], pp);
+    }
   }
 }
 
@@ -369,7 +400,7 @@ void buff2scrn()
                      );
       }
     }
-    M5.Lcd.pushColors((uint8_t*)linebuf, 640);
+    M5.Lcd.pushColors(linebuf, 320, false);
   }
 
   //  for ( i = 0 ; i < 16; i++ ) {
@@ -432,7 +463,7 @@ void piLoad(File dataFile) {
   if (PILOADER::header_read()) {      /* ヘッダー読み込み       */
     PILOADER::ginit();        /* 画面設定           */
     PILOADER::expand();       /* 展開             */
-    PILOADER::buff2scrn();      /* バッファから画面へ転送    */
+//  PILOADER::buff2scrn();      /* バッファから画面へ転送    */
     free(PILOADER::gbuffer);
   }
 }
