@@ -137,7 +137,7 @@ bool header_read(void)
 
   Serial.printf("\n Pic_size  : %4u x %4u\n", x_wid, y_wid);
 
-  if (( gbuffer = (char*)malloc( x_wid * 8 * sizeof(char))) == NULL ) {
+  if (( gbuffer = (char*)malloc( x_wid * 16 * sizeof(char))) == NULL ) {
     error("Sorry! no enough memory");
     return false;
   }
